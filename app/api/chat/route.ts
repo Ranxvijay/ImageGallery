@@ -1,8 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
-
-const client = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-});
+import Groq from "groq-sdk";
 
 const SYSTEM_PROMPT = `You are the AI Concierge for Falcon Inn, located at 7865 Lundy's Lane, Niagara Falls, Ontario — right in the heart of Canada's most iconic destination.
 
@@ -66,24 +62,27 @@ export async function POST(request: Request) {
   try {
     const { messages } = await request.json();
 
-    const stream = await client.messages.stream({
-      model: "claude-opus-4-6",
+    const client = new Groq({ apiKey: process.env.GROQ_API_KEY });
+
+    const stream = await client.chat.completions.create({
+      model: "llama-3.3-70b-versatile",
       max_tokens: 1024,
-      system: SYSTEM_PROMPT,
-      messages: messages,
+      stream: true,
+      messages: [
+        { role: "system", content: SYSTEM_PROMPT },
+        ...messages,
+      ],
     });
 
     const encoder = new TextEncoder();
     const readable = new ReadableStream({
       async start(controller) {
         try {
-          for await (const event of stream) {
-            if (
-              event.type === "content_block_delta" &&
-              event.delta.type === "text_delta"
-            ) {
+          for await (const chunk of stream) {
+            const text = chunk.choices[0]?.delta?.content;
+            if (text) {
               controller.enqueue(
-                encoder.encode(`data: ${JSON.stringify({ text: event.delta.text })}\n\n`)
+                encoder.encode(`data: ${JSON.stringify({ text })}\n\n`)
               );
             }
           }
